@@ -6,7 +6,7 @@ UTILS_PATH := build_utils
 # ToDo: remove unused TEMPLATES_PATH here, when the bug
 # with handling of the varriable in build_utils is fixed
 TEMPLATES_PATH := .
-SERVICE_NAME := scoper
+SERVICE_NAME := cowboy_access_log
 BUILD_IMAGE_TAG := 4fa802d2f534208b9dc2ae203e2a5f07affbf385
 
 CALL_W_CONTAINER := all submodules rebar-update compile xref lint dialyze test clean distclean

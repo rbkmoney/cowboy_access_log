@@ -1,4 +1,4 @@
-{application, access_lib, [
+{application, cowboy_access_log, [
     {description, "An OTP library"},
     {vsn, "0.1.0"},
     {registered, []},

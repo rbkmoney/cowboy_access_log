@@ -1,4 +1,4 @@
--module(access_lib).
+-module(cowboy_access_log).
 
 %% API exports
 -export([log_access/4]).
@@ -20,15 +20,15 @@ log_access(SinkName, Code, Headers, Req) ->
     RespLen  = get_response_len(Headers),
     Duration = get_request_duration(Req),
     ReqMeta = [
-               {remote_addr, RemAddr},
-               {request_method, Method},
-               {request_path, Path},
-               {request_length, ReqLen},
-               {response_length, RespLen},
-               {request_time, Duration},
-               {'http_x-request-id', ReqId},
-               {status, Code}
-              ],
+        {remote_addr, RemAddr},
+        {request_method, Method},
+        {request_path, Path},
+        {request_length, ReqLen},
+        {response_length, RespLen},
+        {request_time, Duration},
+        {'http_x-request-id', ReqId},
+        {status, Code}
+    ],
     Meta = orddict:merge(fun(_Key, New, _Old) -> New end, ReqMeta, lager:md()),
     %% Call lager:log/5 here directly in order to pass request metadata (fused into
     %% lager metadata) without storing it in a process dict via lager:md/1.
