@@ -2,6 +2,9 @@
 
 %% API exports
 -export([log_access/4]).
+-export([set_meta  /1]).
+
+-define(START_TIME_TAG, processing_start_time).
 
 %%====================================================================
 %% API functions
@@ -31,11 +34,14 @@ log_access(SinkName, Code, Headers, Req) ->
     %% lager metadata) without storing it in a process dict via lager:md/1.
     lager:log(SinkName, info, Meta, "", []).
 
+-spec set_meta(cowboy_req:req()) ->
+    cowboy_req:req().
+set_meta(Req) ->
+    cowboy_req:set_meta(?START_TIME_TAG, genlib_time:ticks(), Req).
+
 %%====================================================================
 %% Internal functions
 %%====================================================================
--define(START_TIME_TAG, processing_start_time).
-
 get_remote_addr(Req) ->
     case determine_peer(Req) of
         {{ok, #{ip_address := IP}}, _} ->
