@@ -4,7 +4,7 @@
 -export([log_access/4]).
 -export([set_meta  /1]).
 
--define(START_TIME_TAG, processing_start_time).
+-define(START_TIME_TAG, {?MODULE, request_handling_started_at}).
 
 %%====================================================================
 %% API functions
