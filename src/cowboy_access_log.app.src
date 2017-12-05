@@ -1,0 +1,19 @@
+{application, cowboy_access_log, [
+    {description, "An OTP library"},
+    {vsn, "0.1.0"},
+    {registered, []},
+    {applications, [
+        kernel,
+        stdlib,
+        genlib,
+        lager,
+        cowboy
+    ]},
+    {env,[]},
+    {modules, []},
+    {maintainers, [
+        "Dmitry Manik <d.manik@rbkmoney.com>"
+    ]},
+    {licenses, []},
+    {links, []}
+ ]}.
