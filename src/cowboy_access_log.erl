@@ -28,7 +28,7 @@ request_hook(Req) ->
     set_meta(Req).
 
 -spec response_hook(atom(), cowboy:http_status(), cowboy:http_headers(), iodata(), cowboy_req:req()) ->
-                           cowboy_req:req().
+    cowboy_req:req().
 
 response_hook(SinkName, Code, Headers, _, Req) ->
     try
@@ -76,7 +76,7 @@ set_meta(Req) ->
 
 get_peer_addr(Req) ->
     {{IP, _Port}, _Req1} = cowboy_req:peer(Req),
-    IP.
+    genlib:to_binary(inet:ntoa(IP)).
 
 get_remote_addr(Req) ->
     case determine_remote_addr(Req) of
