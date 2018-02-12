@@ -101,7 +101,9 @@ determine_remote_addr_from_header(Value, _Peer) when is_binary(Value) ->
             inet:parse_strict_address(ClientIP);
         _ ->
             {error, malformed}
-    end.
+    end;
+determine_remote_addr_from_header(undefined, undefined) ->
+    {error, undefined}.
 
 get_request_duration(Req) ->
     case cowboy_req:meta(?START_TIME_TAG, Req) of
