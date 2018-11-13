@@ -45,6 +45,16 @@ response_hook(SinkName, Code, Headers, _, Req) ->
     end.
 
 log_access(SinkName, Code, Headers, Req) ->
+    %% Call lager:log/5 here directly in order to pass request metadata (fused into
+    %% lager metadata) without storing it in a process dict via lager:md/1.
+    lager:log(SinkName, info, prepare_meta(Code, Headers, Req), "", []).
+
+-spec set_meta(cowboy_req:req()) ->
+    cowboy_req:req().
+set_meta(Req) ->
+    cowboy_req:set_meta(?START_TIME_TAG, genlib_time:ticks(), Req).
+
+prepare_meta(Code, Headers, Req) ->
     {Method, _} = cowboy_req:method(Req),
     {Path,   _} = cowboy_req:path(Req),
     {ReqLen, _} = cowboy_req:body_length(Req),
@@ -64,19 +74,16 @@ log_access(SinkName, Code, Headers, Req) ->
         {'http_x-request-id', ReqId},
         {status, Code}
     ],
-    Meta = orddict:merge(fun(_Key, New, _Old) -> New end, ReqMeta, lager:md()),
-    %% Call lager:log/5 here directly in order to pass request metadata (fused into
-    %% lager metadata) without storing it in a process dict via lager:md/1.
-    lager:log(SinkName, info, Meta, "", []).
-
--spec set_meta(cowboy_req:req()) ->
-    cowboy_req:req().
-set_meta(Req) ->
-    cowboy_req:set_meta(?START_TIME_TAG, genlib_time:ticks(), Req).
+    FilteredReqMeta = lists:filter(fun({_, T}) -> T /= undefined end, ReqMeta),
+    orddict:merge(fun(_Key, New, _Old) -> New end, FilteredReqMeta, lager:md()).
 
 get_peer_addr(Req) ->
-    {{IP, _Port}, _Req1} = cowboy_req:peer(Req),
-    genlib:to_binary(inet:ntoa(IP)).
+    case cowboy_req:peer(Req) of
+        {undefined, _} ->
+            undefined;
+        {{IP, _Port}, _Req1} ->
+            genlib:to_binary(inet:ntoa(IP))
+    end.
 
 get_remote_addr(Req) ->
     case determine_remote_addr(Req) of
@@ -120,3 +127,22 @@ get_response_len(Headers) ->
         false ->
             undefined
     end.
+
+%%
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+-spec test() -> _.
+
+-spec filter_meta_test() -> _.
+filter_meta_test() ->
+    Req = {http_req, undefined, undefined, keepalive, undefined, <<"GET">>, 'HTTP/1.1',
+        undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+        undefined, [], [], undefined, [], waiting, <<>>, undefined, false, waiting, [], <<>>,
+        undefined},
+    Meta = prepare_meta(200, [], Req),
+    FilteredMeta = orddict:filter(fun (_, Val) -> Val == undefined end, Meta),
+    0 = orddict:size(FilteredMeta).
+
+-endif.
