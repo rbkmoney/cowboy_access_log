@@ -55,27 +55,24 @@ set_meta(Req) ->
     cowboy_req:set_meta(?START_TIME_TAG, genlib_time:ticks(), Req).
 
 prepare_meta(Code, Headers, Req) ->
-    {Method, _} = cowboy_req:method(Req),
-    {Path,   _} = cowboy_req:path(Req),
-    {ReqLen, _} = cowboy_req:body_length(Req),
-    {ReqId,  _} = cowboy_req:header(<<"x-request-id">>, Req, undefined),
-    RemoteAddr  = get_remote_addr(Req),
-    PeerAddr    = get_peer_addr(Req),
-    RespLen  = get_response_len(Headers),
-    Duration = get_request_duration(Req),
-    ReqMeta = [
-        {remote_addr, RemoteAddr},
-        {peer_addr, PeerAddr},
-        {request_method, Method},
-        {request_path, Path},
-        {request_length, ReqLen},
-        {response_length, RespLen},
-        {request_time, Duration},
-        {'http_x-request-id', ReqId},
-        {status, Code}
-    ],
-    FilteredReqMeta = lists:filter(fun({_, T}) -> T /= undefined end, ReqMeta),
-    orddict:merge(fun(_Key, New, _Old) -> New end, FilteredReqMeta, lager:md()).
+    MD1 = set_log_meta(remote_addr,         get_remote_addr(Req),           lager:md()),
+    MD2 = set_log_meta(peer_addr,           get_peer_addr(Req),             MD1),
+    MD3 = set_log_meta(request_method,      cowboy_req:method(Req),         MD2),
+    MD4 = set_log_meta(request_path,        cowboy_req:path(Req),           MD3),
+    MD5 = set_log_meta(request_length,      cowboy_req:body_length(Req),    MD4),
+    MD6 = set_log_meta(response_length,     get_response_len(Headers),      MD5),
+    MD7 = set_log_meta(request_time,        get_request_duration(Req),      MD6),
+    MD8 = set_log_meta(
+        'http_x-request-id',
+        cowboy_req:header(<<"x-request-id">>, Req, undefined),
+        MD7
+    ),
+    set_log_meta(status, Code, MD8).
+
+set_log_meta(_, undefined, MD) ->
+    MD;
+set_log_meta(Name, Value, MD) ->
+    orddict:store(Name, Value, MD).
 
 get_peer_addr(Req) ->
     case cowboy_req:peer(Req) of
