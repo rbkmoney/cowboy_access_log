@@ -57,14 +57,24 @@ set_meta(Req) ->
 prepare_meta(Code, Headers, Req) ->
     MD1 = set_log_meta(remote_addr,         get_remote_addr(Req),           lager:md()),
     MD2 = set_log_meta(peer_addr,           get_peer_addr(Req),             MD1),
-    MD3 = set_log_meta(request_method,      cowboy_req:method(Req),         MD2),
-    MD4 = set_log_meta(request_path,        cowboy_req:path(Req),           MD3),
-    MD5 = set_log_meta(request_length,      cowboy_req:body_length(Req),    MD4),
+    MD3 = set_log_meta(
+        request_method,
+        unwrap_cowboy_result(cowboy_req:method(Req)),
+        MD2
+    ),
+    MD4 = set_log_meta(
+        request_path,
+        unwrap_cowboy_result(cowboy_req:path(Req)),
+        MD3),
+    MD5 = set_log_meta(
+        request_length,
+        unwrap_cowboy_result(cowboy_req:body_length(Req)),
+        MD4),
     MD6 = set_log_meta(response_length,     get_response_len(Headers),      MD5),
     MD7 = set_log_meta(request_time,        get_request_duration(Req),      MD6),
     MD8 = set_log_meta(
         'http_x-request-id',
-        cowboy_req:header(<<"x-request-id">>, Req, undefined),
+        unwrap_cowboy_result(cowboy_req:header(<<"x-request-id">>, Req, undefined)),
         MD7
     ),
     set_log_meta(status, Code, MD8).
@@ -73,6 +83,9 @@ set_log_meta(_, undefined, MD) ->
     MD;
 set_log_meta(Name, Value, MD) ->
     orddict:store(Name, Value, MD).
+
+unwrap_cowboy_result({Value, _}) ->
+    Value.
 
 get_peer_addr(Req) ->
     case cowboy_req:peer(Req) of
@@ -138,8 +151,10 @@ filter_meta_test() ->
         undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
         undefined, [], [], undefined, [], waiting, <<>>, undefined, false, waiting, [], <<>>,
         undefined},
-    Meta = prepare_meta(200, [], Req),
-    FilteredMeta = orddict:filter(fun (_, Val) -> Val == undefined end, Meta),
-    0 = orddict:size(FilteredMeta).
+    [
+        {request_length, 0},
+        {request_method, <<"GET">>},
+        {status, 200}
+    ] = prepare_meta(200, [], Req).
 
 -endif.
