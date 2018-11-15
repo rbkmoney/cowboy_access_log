@@ -1,5 +1,7 @@
 -module(cowboy_access_log).
 
+-compile([{parse_transform, lager_transform}]).
+
 %% API exports
 -export([get_request_hook/0]).
 -export([get_response_hook/1]).
@@ -45,38 +47,55 @@ response_hook(SinkName, Code, Headers, _, Req) ->
     end.
 
 log_access(SinkName, Code, Headers, Req) ->
-    {Method, _} = cowboy_req:method(Req),
-    {Path,   _} = cowboy_req:path(Req),
-    {ReqLen, _} = cowboy_req:body_length(Req),
-    {ReqId,  _} = cowboy_req:header(<<"x-request-id">>, Req, undefined),
-    RemoteAddr  = get_remote_addr(Req),
-    PeerAddr    = get_peer_addr(Req),
-    RespLen  = get_response_len(Headers),
-    Duration = get_request_duration(Req),
-    ReqMeta = [
-        {remote_addr, RemoteAddr},
-        {peer_addr, PeerAddr},
-        {request_method, Method},
-        {request_path, Path},
-        {request_length, ReqLen},
-        {response_length, RespLen},
-        {request_time, Duration},
-        {'http_x-request-id', ReqId},
-        {status, Code}
-    ],
-    Meta = orddict:merge(fun(_Key, New, _Old) -> New end, ReqMeta, lager:md()),
     %% Call lager:log/5 here directly in order to pass request metadata (fused into
     %% lager metadata) without storing it in a process dict via lager:md/1.
-    lager:log(SinkName, info, Meta, "", []).
+    lager:log(SinkName, info, prepare_meta(Code, Headers, Req), "", []).
 
 -spec set_meta(cowboy_req:req()) ->
     cowboy_req:req().
 set_meta(Req) ->
     cowboy_req:set_meta(?START_TIME_TAG, genlib_time:ticks(), Req).
 
+prepare_meta(Code, Headers, Req) ->
+    MD1 = set_log_meta(remote_addr,         get_remote_addr(Req),           lager:md()),
+    MD2 = set_log_meta(peer_addr,           get_peer_addr(Req),             MD1),
+    MD3 = set_log_meta(
+        request_method,
+        unwrap_cowboy_result(cowboy_req:method(Req)),
+        MD2
+    ),
+    MD4 = set_log_meta(
+        request_path,
+        unwrap_cowboy_result(cowboy_req:path(Req)),
+        MD3),
+    MD5 = set_log_meta(
+        request_length,
+        unwrap_cowboy_result(cowboy_req:body_length(Req)),
+        MD4),
+    MD6 = set_log_meta(response_length,     get_response_len(Headers),      MD5),
+    MD7 = set_log_meta(request_time,        get_request_duration(Req),      MD6),
+    MD8 = set_log_meta(
+        'http_x-request-id',
+        unwrap_cowboy_result(cowboy_req:header(<<"x-request-id">>, Req, undefined)),
+        MD7
+    ),
+    set_log_meta(status, Code, MD8).
+
+set_log_meta(_, undefined, MD) ->
+    MD;
+set_log_meta(Name, Value, MD) ->
+    orddict:store(Name, Value, MD).
+
+unwrap_cowboy_result({Value, _}) ->
+    Value.
+
 get_peer_addr(Req) ->
-    {{IP, _Port}, _Req1} = cowboy_req:peer(Req),
-    genlib:to_binary(inet:ntoa(IP)).
+    case cowboy_req:peer(Req) of
+        {undefined, _} ->
+            undefined;
+        {{IP, _Port}, _Req1} ->
+            genlib:to_binary(inet:ntoa(IP))
+    end.
 
 get_remote_addr(Req) ->
     case determine_remote_addr(Req) of
@@ -120,3 +139,25 @@ get_response_len(Headers) ->
         false ->
             undefined
     end.
+
+%%
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+-spec test() -> _.
+
+-spec filter_meta_test() -> _.
+filter_meta_test() ->
+    Req = cowboy_req:new(
+        undefined, undefined, undefined, <<"GET">>, <<>>, <<>>,
+        'HTTP/1.1', [], <<>>, undefined, <<>>, false, false, undefined
+    ),
+    [
+        {request_length, 0},
+        {request_method, <<"GET">>},
+        {request_path, <<>>},
+        {status, 200}
+    ] = prepare_meta(200, [], Req).
+
+-endif.
