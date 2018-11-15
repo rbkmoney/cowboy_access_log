@@ -30,7 +30,7 @@ rebar-update:
 	$(REBAR) update
 
 test: submodules
-	$(REBAR) ct
+	$(REBAR) eunit
 
 xref: submodules
 	$(REBAR) as test xref

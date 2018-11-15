@@ -37,11 +37,11 @@ build('cowboy_access_log', 'docker-host', finalHook) {
         sh 'make wc_xref'
       }
 
-      runStage('dialyze') {
-        withWsCache("_build/default/rebar3_19.1_plt") {
-          sh 'make wc_dialyze'
-        }
-      }
+      //runStage('dialyze') {
+      //  withWsCache("_build/default/rebar3_19.1_plt") {
+      //    sh 'make wc_dialyze'
+      //  }
+      //}
 
       runStage('test') {
         sh "make wdeps_test"

@@ -149,13 +149,14 @@ get_response_len(Headers) ->
 
 -spec filter_meta_test() -> _.
 filter_meta_test() ->
-    Req = {http_req, undefined, undefined, keepalive, undefined, <<"GET">>, 'HTTP/1.1',
-        undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-        undefined, [], [], undefined, [], waiting, <<>>, undefined, false, waiting, [], <<>>,
-        undefined},
+    Req = cowboy_req:new(
+        undefined, undefined, undefined, <<"GET">>, <<>>, <<>>,
+        'HTTP/1.1', [], <<>>, undefined, <<>>, false, false, undefined
+    ),
     [
         {request_length, 0},
         {request_method, <<"GET">>},
+        {request_path, <<>>},
         {status, 200}
     ] = prepare_meta(200, [], Req).
 
