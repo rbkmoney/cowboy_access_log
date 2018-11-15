@@ -1,5 +1,7 @@
 -module(cowboy_access_log).
 
+-compile([{parse_transform, lager_transform}]).
+
 %% API exports
 -export([get_request_hook/0]).
 -export([get_response_hook/1]).
