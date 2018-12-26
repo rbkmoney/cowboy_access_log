@@ -8,16 +8,21 @@
 
 -define(START_TIME_TAG, cowboy_access_log_request_handling_started_at).
 
+-type onrequest_fun() :: fun((Req) -> Req).
+-type onresponse_fun() :: fun((http_status(), http_headers(), iodata(), Req) -> Req).
+-type http_status() :: cowboy:http_status().
+-type http_headers() :: cowboy:http_headers().
+
 %%====================================================================
 %% API functions
 %%====================================================================
 -spec get_request_hook() ->
-    cowboy:onrequest_fun().
+    onrequest_fun().
 get_request_hook() ->
     fun(Req) -> request_hook(Req) end.
 
 -spec get_response_hook(atom()) ->
-    cowboy:onresponse_fun().
+    onresponse_fun().
 get_response_hook(Sinkname) ->
     fun(Code, Headers, IO, Req) ->
         response_hook(Sinkname, Code, Headers, IO, Req)
@@ -37,8 +42,8 @@ response_hook(SinkName, Code, Headers, _, Req) ->
         _ = log_access(SinkName, Code, Headers, Req),
         Req
     catch
-        Class:Reason ->
-            Stack = genlib_format:format_stacktrace(erlang:get_stacktrace(), [newlines]),
+        Class:Reason:Stacktrace ->
+            Stack = genlib_format:format_stacktrace(Stacktrace, [newlines]),
             _ = lager:error(
                   "Response hook failed for: [~p, ~p, ~p]~nwith: ~p:~p~nstacktrace: ~ts",
                   [Code, Headers, Req, Class, Reason, Stack]
@@ -54,29 +59,29 @@ log_access(SinkName, Code, Headers, Req) ->
 -spec set_meta(cowboy_req:req()) ->
     cowboy_req:req().
 set_meta(Req) ->
-    cowboy_req:set_meta(?START_TIME_TAG, genlib_time:ticks(), Req).
+    maps:put(meta, #{?START_TIME_TAG => genlib_time:ticks()}, Req).
 
 prepare_meta(Code, Headers, Req) ->
     MD1 = set_log_meta(remote_addr,         get_remote_addr(Req),           lager:md()),
     MD2 = set_log_meta(peer_addr,           get_peer_addr(Req),             MD1),
     MD3 = set_log_meta(
         request_method,
-        unwrap_cowboy_result(cowboy_req:method(Req)),
+        cowboy_req:method(Req),
         MD2
     ),
     MD4 = set_log_meta(
         request_path,
-        unwrap_cowboy_result(cowboy_req:path(Req)),
+        cowboy_req:path(Req),
         MD3),
     MD5 = set_log_meta(
         request_length,
-        unwrap_cowboy_result(cowboy_req:body_length(Req)),
+        cowboy_req:body_length(Req),
         MD4),
     MD6 = set_log_meta(response_length,     get_response_len(Headers),      MD5),
     MD7 = set_log_meta(request_time,        get_request_duration(Req),      MD6),
     MD8 = set_log_meta(
         'http_x-request-id',
-        unwrap_cowboy_result(cowboy_req:header(<<"x-request-id">>, Req, undefined)),
+        cowboy_req:header(<<"x-request-id">>, Req, undefined),
         MD7
     ),
     set_log_meta(status, Code, MD8).
@@ -86,14 +91,11 @@ set_log_meta(_, undefined, MD) ->
 set_log_meta(Name, Value, MD) ->
     orddict:store(Name, Value, MD).
 
-unwrap_cowboy_result({Value, _}) ->
-    Value.
-
 get_peer_addr(Req) ->
     case cowboy_req:peer(Req) of
-        {undefined, _} ->
+        undefined ->
             undefined;
-        {{IP, _Port}, _Req1} ->
+        {IP, _Port} ->
             genlib:to_binary(inet:ntoa(IP))
     end.
 
@@ -106,8 +108,8 @@ get_remote_addr(Req) ->
     end.
 
 determine_remote_addr(Req) ->
-    {Peer, Req1}  = cowboy_req:peer(Req),
-    {Value, _Req2} = cowboy_req:header(<<"x-forwarded-for">>, Req1),
+    Peer  = cowboy_req:peer(Req),
+    Value = cowboy_req:header(<<"x-forwarded-for">>, Req),
     determine_remote_addr_from_header(Value, Peer).
 
 determine_remote_addr_from_header(undefined, {IP, _Port}) ->
@@ -125,18 +127,23 @@ determine_remote_addr_from_header(undefined, undefined) ->
     {error, undefined}.
 
 get_request_duration(Req) ->
-    case cowboy_req:meta(?START_TIME_TAG, Req) of
-        {undefined, _} ->
+    case maps:get(meta, Req, undefined) of
+        undefined ->
             undefined;
-        {StartTime, _} ->
-            (genlib_time:ticks() - StartTime) / 1000000
+        Meta ->
+            case maps:get(?START_TIME_TAG, Meta, undefined) of
+                undefined ->
+                    undefined;
+                {StartTime, _} ->
+                    (genlib_time:ticks() - StartTime) / 1000000
+            end
     end.
 
 get_response_len(Headers) ->
-    case lists:keyfind(<<"content-length">>, 1, Headers) of
+    case maps:get(<<"content-length">>, Headers, undefined) of
         {_, Len} ->
             genlib:to_int(Len);
-        false ->
+        undefined ->
             undefined
     end.
 
@@ -149,15 +156,24 @@ get_response_len(Headers) ->
 
 -spec filter_meta_test() -> _.
 filter_meta_test() ->
-    Req = cowboy_req:new(
-        undefined, undefined, undefined, <<"GET">>, <<>>, <<>>,
-        'HTTP/1.1', [], <<>>, undefined, <<>>, false, false, undefined
-    ),
-    [
+    Req = #{
+        pid => self(),
+        peer => undefined,
+        method => <<"GET">>,
+        path => <<>>,
+        qs => <<>>,
+        version => 'HTTP/1.1',
+        headers => #{},
+        host => <<>>,
+        port => undefined,
+        has_body => false,
+        body_length => 0
+    },
+   [
         {request_length, 0},
         {request_method, <<"GET">>},
         {request_path, <<>>},
         {status, 200}
-    ] = prepare_meta(200, [], Req).
+    ] = prepare_meta(200, #{}, Req).
 
 -endif.
