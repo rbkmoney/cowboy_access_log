@@ -1,43 +1,32 @@
--module(cowboy_access_log).
+-module(cowboy_access_log_h).
+-behaviour(cowboy_stream).
 
 -compile([{parse_transform, lager_transform}]).
 
-%% API exports
--export([get_request_hook/0]).
--export([get_response_hook/1]).
+-dialyzer(no_undefined_callbacks).
+
+%% callback exports
+
+-export([init/3]).
+-export([data/4]).
+-export([info/3]).
+-export([terminate/3]).
+-export([early_error/5]).
+
+-type state() :: #{
+    next := any(),
+    req  := cowboy_req:req(),
+    sink := atom()
+}.
 
 -define(START_TIME_TAG, cowboy_access_log_request_handling_started_at).
 
--type onrequest_fun() :: fun((Req) -> Req).
--type onresponse_fun() :: fun((http_status(), http_headers(), iodata(), Req) -> Req).
--type http_status() :: cowboy:http_status().
--type http_headers() :: cowboy:http_headers().
+%% private functions
 
-%%====================================================================
-%% API functions
-%%====================================================================
--spec get_request_hook() ->
-    onrequest_fun().
-get_request_hook() ->
-    fun(Req) -> request_hook(Req) end.
-
--spec get_response_hook(atom()) ->
-    onresponse_fun().
-get_response_hook(Sinkname) ->
-    fun(Code, Headers, IO, Req) ->
-        response_hook(Sinkname, Code, Headers, IO, Req)
-    end.
-
-%%====================================================================
-%% Internal functions
-%%====================================================================
-request_hook(Req) ->
+onrequest(Req) ->
     set_meta(Req).
 
--spec response_hook(atom(), cowboy:http_status(), cowboy:http_headers(), iodata(), cowboy_req:req()) ->
-    cowboy_req:req().
-
-response_hook(SinkName, Code, Headers, _, Req) ->
+onresponse(SinkName, {response, Code, Headers, _}, Req) ->
     try
         _ = log_access(SinkName, Code, Headers, Req),
         Req
@@ -56,34 +45,15 @@ log_access(SinkName, Code, Headers, Req) ->
     %% lager metadata) without storing it in a process dict via lager:md/1.
     lager:log(SinkName, info, prepare_meta(Code, Headers, Req), "", []).
 
--spec set_meta(cowboy_req:req()) ->
-    cowboy_req:req().
-set_meta(Req) ->
-    maps:put(meta, #{?START_TIME_TAG => genlib_time:ticks()}, Req).
-
 prepare_meta(Code, Headers, Req) ->
-    MD1 = set_log_meta(remote_addr,         get_remote_addr(Req),           lager:md()),
-    MD2 = set_log_meta(peer_addr,           get_peer_addr(Req),             MD1),
-    MD3 = set_log_meta(
-        request_method,
-        cowboy_req:method(Req),
-        MD2
-    ),
-    MD4 = set_log_meta(
-        request_path,
-        cowboy_req:path(Req),
-        MD3),
-    MD5 = set_log_meta(
-        request_length,
-        cowboy_req:body_length(Req),
-        MD4),
-    MD6 = set_log_meta(response_length,     get_response_len(Headers),      MD5),
-    MD7 = set_log_meta(request_time,        get_request_duration(Req),      MD6),
-    MD8 = set_log_meta(
-        'http_x-request-id',
-        cowboy_req:header(<<"x-request-id">>, Req, undefined),
-        MD7
-    ),
+    MD1 = set_log_meta(remote_addr, get_remote_addr(Req), lager:md()),
+    MD2 = set_log_meta(peer_addr, get_peer_addr(Req), MD1),
+    MD3 = set_log_meta(request_method, cowboy_req:method(Req), MD2),
+    MD4 = set_log_meta(request_path, cowboy_req:path(Req), MD3),
+    MD5 = set_log_meta(request_length, cowboy_req:body_length(Req), MD4),
+    MD6 = set_log_meta(response_length, get_response_len(Headers), MD5),
+    MD7 = set_log_meta(request_time, get_request_duration(Req), MD6),
+    MD8 = set_log_meta('http_x-request-id', cowboy_req:header(<<"x-request-id">>, Req, undefined), MD7),
     set_log_meta(status, Code, MD8).
 
 set_log_meta(_, undefined, MD) ->
@@ -147,7 +117,49 @@ get_response_len(Headers) ->
             undefined
     end.
 
-%%
+set_meta(Req) ->
+    maps:put(meta, #{?START_TIME_TAG => genlib_time:ticks()}, Req).
+
+get_sink(#{env := Env}) ->
+    maps:get(sink, Env).
+
+%% callbacks
+
+-spec init(cowboy_stream:streamid(), cowboy_req:req(), cowboy:opts())
+    -> {cowboy_stream:commands(), state()}.
+init(StreamID, Req0, Opts) ->
+    Req = onrequest(Req0),
+    {Commands0, Next} = cowboy_stream:init(StreamID, Req, Opts),
+    {Commands0, #{next => Next, sink => get_sink(Opts), req => Req}}.
+
+-spec data(cowboy_stream:streamid(), cowboy_stream:fin(), cowboy_req:resp_body(), State)
+    -> {cowboy_stream:commands(), State} when State::state().
+data(StreamID, IsFin, Data, #{next := Next0} = State) ->
+    {Commands0, Next} = cowboy_stream:data(StreamID, IsFin, Data, Next0),
+    {Commands0, State#{next => Next}}.
+
+-spec info(cowboy_stream:streamid(), any(), State)
+    -> {cowboy_stream:commands(), State} when State::state().
+info(StreamID, {response, _, _, _} = Info, #{next := Next0, sink := SinkName, req := Req} = State) ->
+    onresponse(SinkName, Info, Req),
+    {Commands0, Next} = cowboy_stream:info(StreamID, Info, Next0),
+    {Commands0, State#{next => Next}};
+info(StreamID, Info, #{next := Next0} = State) ->
+    {Commands0, Next} = cowboy_stream:info(StreamID, Info, Next0),
+    {Commands0, State#{next => Next}}.
+
+-spec terminate(cowboy_stream:streamid(), cowboy_stream:reason(), state()) -> any().
+terminate(StreamID, Reason, #{next := Next}) ->
+    cowboy_stream:terminate(StreamID, Reason, Next).
+
+-spec early_error(cowboy_stream:streamid(), cowboy_stream:reason(),
+    cowboy_stream:partial_req(), Resp, cowboy:opts()) -> Resp
+    when Resp::cowboy_stream:resp_command().
+early_error(StreamID, Reason, PartialReq0, Resp, Opts) ->
+    PartialReq = onrequest(PartialReq0),
+    _ = onresponse(get_sink(Opts), Resp, PartialReq),
+    cowboy_stream:early_error(StreamID, Reason, PartialReq, Resp, Opts).
+
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
