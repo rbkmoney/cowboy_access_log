@@ -21,12 +21,46 @@
 
 -define(START_TIME_TAG, cowboy_access_log_request_handling_started_at).
 
+%% callbacks
+
+-spec init(cowboy_stream:streamid(), cowboy_req:req(), cowboy:opts())
+    -> {cowboy_stream:commands(), state()}.
+init(StreamID, Req0, Opts) ->
+    Req = set_meta(Req0),
+    {Commands0, Next} = cowboy_stream:init(StreamID, Req, Opts),
+    {Commands0, #{next => Next, sink => get_sink(Opts), req => Req}}.
+
+-spec data(cowboy_stream:streamid(), cowboy_stream:fin(), cowboy_req:resp_body(), State)
+    -> {cowboy_stream:commands(), State} when State::state().
+data(StreamID, IsFin, Data, #{next := Next0} = State) ->
+    {Commands0, Next} = cowboy_stream:data(StreamID, IsFin, Data, Next0),
+    {Commands0, State#{next => Next}}.
+
+-spec info(cowboy_stream:streamid(), any(), State)
+    -> {cowboy_stream:commands(), State} when State::state().
+info(StreamID, {response, Code, Headers, _} = Info, #{next := Next0, sink := SinkName, req := Req} = State) ->
+    _ = log_access_safe(SinkName, Code, Headers, Req),
+    {Commands0, Next} = cowboy_stream:info(StreamID, Info, Next0),
+    {Commands0, State#{next => Next}};
+info(StreamID, Info, #{next := Next0} = State) ->
+    {Commands0, Next} = cowboy_stream:info(StreamID, Info, Next0),
+    {Commands0, State#{next => Next}}.
+
+-spec terminate(cowboy_stream:streamid(), cowboy_stream:reason(), state()) -> any().
+terminate(StreamID, Reason, #{next := Next}) ->
+    cowboy_stream:terminate(StreamID, Reason, Next).
+
+-spec early_error(cowboy_stream:streamid(), cowboy_stream:reason(),
+    cowboy_stream:partial_req(), Resp, cowboy:opts()) -> Resp
+    when Resp::cowboy_stream:resp_command().
+early_error(StreamID, Reason, PartialReq0, {_, Code, Headers, _} = Resp, Opts) ->
+    PartialReq = set_meta(PartialReq0),
+    _ = log_access_safe(get_sink(Opts), Code, Headers, PartialReq),
+    cowboy_stream:early_error(StreamID, Reason, PartialReq, Resp, Opts).
+
 %% private functions
 
-onrequest(Req) ->
-    set_meta(Req).
-
-onresponse(SinkName, {response, Code, Headers, _}, Req) ->
+log_access_safe(SinkName, Code, Headers, Req) ->
     try
         _ = log_access(SinkName, Code, Headers, Req),
         Req
@@ -122,44 +156,6 @@ set_meta(Req) ->
 
 get_sink(#{env := Env}) ->
     maps:get(sink, Env).
-
-%% callbacks
-
--spec init(cowboy_stream:streamid(), cowboy_req:req(), cowboy:opts())
-    -> {cowboy_stream:commands(), state()}.
-init(StreamID, Req0, Opts) ->
-    Req = onrequest(Req0),
-    {Commands0, Next} = cowboy_stream:init(StreamID, Req, Opts),
-    {Commands0, #{next => Next, sink => get_sink(Opts), req => Req}}.
-
--spec data(cowboy_stream:streamid(), cowboy_stream:fin(), cowboy_req:resp_body(), State)
-    -> {cowboy_stream:commands(), State} when State::state().
-data(StreamID, IsFin, Data, #{next := Next0} = State) ->
-    {Commands0, Next} = cowboy_stream:data(StreamID, IsFin, Data, Next0),
-    {Commands0, State#{next => Next}}.
-
--spec info(cowboy_stream:streamid(), any(), State)
-    -> {cowboy_stream:commands(), State} when State::state().
-info(StreamID, {response, _, _, _} = Info, #{next := Next0, sink := SinkName, req := Req} = State) ->
-    onresponse(SinkName, Info, Req),
-    {Commands0, Next} = cowboy_stream:info(StreamID, Info, Next0),
-    {Commands0, State#{next => Next}};
-info(StreamID, Info, #{next := Next0} = State) ->
-    {Commands0, Next} = cowboy_stream:info(StreamID, Info, Next0),
-    {Commands0, State#{next => Next}}.
-
--spec terminate(cowboy_stream:streamid(), cowboy_stream:reason(), state()) -> any().
-terminate(StreamID, Reason, #{next := Next}) ->
-    cowboy_stream:terminate(StreamID, Reason, Next).
-
--spec early_error(cowboy_stream:streamid(), cowboy_stream:reason(),
-    cowboy_stream:partial_req(), Resp, cowboy:opts()) -> Resp
-    when Resp::cowboy_stream:resp_command().
-early_error(StreamID, Reason, PartialReq0, Resp, Opts) ->
-    PartialReq = onrequest(PartialReq0),
-    _ = onresponse(get_sink(Opts), Resp, PartialReq),
-    cowboy_stream:early_error(StreamID, Reason, PartialReq, Resp, Opts).
-
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
