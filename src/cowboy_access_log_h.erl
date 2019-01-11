@@ -145,10 +145,10 @@ get_request_duration(Req) ->
 
 get_response_len(Headers) ->
     case maps:get(<<"content-length">>, Headers, undefined) of
-        {_, Len} ->
-            genlib:to_int(Len);
-        undefined ->
-            undefined
+         undefined ->
+            undefined;
+        Len ->
+            genlib:to_int(Len)
     end.
 
 set_meta(Req) ->
@@ -181,7 +181,8 @@ filter_meta_test() ->
         {request_length, 0},
         {request_method, <<"GET">>},
         {request_path, <<>>},
+        {response_length, 33},
         {status, 200}
-    ] = prepare_meta(200, #{}, Req).
+    ] = prepare_meta(200, #{<<"content-length">> => <<"33">>}, Req).
 
 -endif.
