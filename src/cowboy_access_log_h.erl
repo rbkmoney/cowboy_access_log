@@ -138,7 +138,7 @@ get_request_duration(Req) ->
             case maps:get(?START_TIME_TAG, Meta, undefined) of
                 undefined ->
                     undefined;
-                {StartTime, _} ->
+                StartTime ->
                     (genlib_time:ticks() - StartTime) / 1000000
             end
     end.
