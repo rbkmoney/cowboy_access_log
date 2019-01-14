@@ -164,7 +164,7 @@ get_sink(#{env := Env}) ->
 
 -spec filter_meta_test() -> _.
 filter_meta_test() ->
-    Req = #{
+    Req0 = #{
         pid => self(),
         peer => undefined,
         method => <<"GET">>,
@@ -177,10 +177,12 @@ filter_meta_test() ->
         has_body => false,
         body_length => 0
     },
+    Req = set_meta(Req0), 
    [
         {request_length, 0},
         {request_method, <<"GET">>},
         {request_path, <<>>},
+        {request_time, _},
         {response_length, 33},
         {status, 200}
     ] = prepare_meta(200, #{<<"content-length">> => <<"33">>}, Req).
