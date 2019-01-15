@@ -13,13 +13,11 @@
 -export([terminate/3]).
 -export([early_error/5]).
 
--define(START_TIME_TAG, cowboy_access_log_request_handling_started_at).
-
 -type state() :: #{
     next := any(),
     req  := cowboy_req:req(),
     sink := atom(),
-    meta := #{?START_TIME_TAG => genlib_time:ticks()}
+    meta := #{started_at => genlib_time:ticks()}
 }.
 
 %% callbacks
@@ -27,8 +25,9 @@
 -spec init(cowboy_stream:streamid(), cowboy_req:req(), cowboy:opts())
     -> {cowboy_stream:commands(), state()}.
 init(StreamID, Req, Opts) ->
+    State = make_state(Req, Opts),
     {Commands0, Next} = cowboy_stream:init(StreamID, Req, Opts),
-    {Commands0, set_meta(#{next => Next, sink => get_sink(Opts), req => Req})}.
+    {Commands0, State#{next => Next}}.
 
 -spec data(cowboy_stream:streamid(), cowboy_stream:fin(), cowboy_req:resp_body(), State)
     -> {cowboy_stream:commands(), State} when State::state().
@@ -38,8 +37,8 @@ data(StreamID, IsFin, Data, #{next := Next0} = State) ->
 
 -spec info(cowboy_stream:streamid(), any(), State)
     -> {cowboy_stream:commands(), State} when State::state().
-info(StreamID, {response, Code, Headers, _} = Info, #{next := Next0, sink := SinkName, req := Req} = State) ->
-    _ = log_access_safe(SinkName, Code, Headers, Req, State),
+info(StreamID, {response, Code, Headers, _} = Info, #{next := Next0} = State) ->
+    _ = log_access_safe(Code, Headers, State),
     {Commands0, Next} = cowboy_stream:info(StreamID, Info, Next0),
     {Commands0, State#{next => Next}};
 info(StreamID, Info, #{next := Next0} = State) ->
@@ -54,14 +53,15 @@ terminate(StreamID, Reason, #{next := Next}) ->
     cowboy_stream:partial_req(), Resp, cowboy:opts()) -> Resp
     when Resp::cowboy_stream:resp_command().
 early_error(StreamID, Reason, PartialReq, {_, Code, Headers, _} = Resp, Opts) ->
-    _ = log_access_safe(get_sink(Opts), Code, Headers, PartialReq, set_meta(Opts)),
-    cowboy_stream:early_error(StreamID, Reason, PartialReq, Resp, Opts).
+    State = make_state(PartialReq, Opts),
+    _ = log_access_safe(Code, Headers, State),
+    cowboy_stream:early_error(StreamID, Reason, PartialReq, Resp, State).
 
 %% private functions
 
-log_access_safe(SinkName, Code, Headers, Req, Opts) ->
+log_access_safe(Code, Headers, #{req := Req} = State) ->
     try
-        _ = log_access(SinkName, Code, Headers, Req, Opts),
+        _ = log_access(Code, Headers, State),
         Req
     catch
         Class:Reason:Stacktrace ->
@@ -73,19 +73,19 @@ log_access_safe(SinkName, Code, Headers, Req, Opts) ->
             Req
     end.
 
-log_access(SinkName, Code, Headers, Req, Opts) ->
+log_access(Code, Headers, #{sink := SinkName} = State) ->
     %% Call lager:log/5 here directly in order to pass request metadata (fused into
     %% lager metadata) without storing it in a process dict via lager:md/1.
-    lager:log(SinkName, info, prepare_meta(Code, Headers, Req, Opts), "", []).
+    lager:log(SinkName, info, prepare_meta(Code, Headers, State), "", []).
 
-prepare_meta(Code, Headers, Req, Opts) ->
+prepare_meta(Code, Headers, #{req := Req, meta:= Meta} = _State) ->
     MD1 = set_log_meta(remote_addr, get_remote_addr(Req), lager:md()),
     MD2 = set_log_meta(peer_addr, get_peer_addr(Req), MD1),
     MD3 = set_log_meta(request_method, cowboy_req:method(Req), MD2),
     MD4 = set_log_meta(request_path, cowboy_req:path(Req), MD3),
     MD5 = set_log_meta(request_length, cowboy_req:body_length(Req), MD4),
     MD6 = set_log_meta(response_length, get_response_len(Headers), MD5),
-    MD7 = set_log_meta(request_time, get_request_duration(Opts), MD6),
+    MD7 = set_log_meta(request_time, get_request_duration(Meta), MD6),
     MD8 = set_log_meta('http_x-request-id', cowboy_req:header(<<"x-request-id">>, Req, undefined), MD7),
     set_log_meta(status, Code, MD8).
 
@@ -129,17 +129,12 @@ determine_remote_addr_from_header(Value, _Peer) when is_binary(Value) ->
 determine_remote_addr_from_header(undefined, undefined) ->
     {error, undefined}.
 
-get_request_duration(Opts) ->
-    case maps:get(meta, Opts, undefined) of
+get_request_duration(Meta) ->
+    case maps:get(started_at, Meta, undefined) of
         undefined ->
             undefined;
-        Meta ->
-            case maps:get(?START_TIME_TAG, Meta, undefined) of
-                undefined ->
-                    undefined;
-                StartTime ->
-                    (genlib_time:ticks() - StartTime) / 1000000
-            end
+        StartTime ->
+            (genlib_time:ticks() - StartTime) / 1000000
     end.
 
 get_response_len(Headers) ->
@@ -150,16 +145,20 @@ get_response_len(Headers) ->
             genlib:to_int(Len)
     end.
 
-set_meta(Opts) ->
-    Opts#{meta => #{?START_TIME_TAG => genlib_time:ticks()}}.
+make_state(Req, Opts) ->
+    SinkName = maps:get(sink, Opts),
+    set_meta(#{req => Req, sink => SinkName}).
 
-get_sink(#{env := Env}) ->
-    maps:get(sink, Env).
+set_meta(State) ->
+    State#{meta => #{started_at => genlib_time:ticks()}}.
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 
 -spec test() -> _.
+
+make_state(Req) ->
+    make_state(Req, #{sink => dummy}).
 
 -spec filter_meta_test() -> _.
 filter_meta_test() ->
@@ -176,7 +175,7 @@ filter_meta_test() ->
         has_body => false,
         body_length => 0
     },
-    State = set_meta(#{}),
+    State = make_state(Req),
     [
         {request_length, 0},
         {request_method, <<"GET">>},
@@ -184,6 +183,6 @@ filter_meta_test() ->
         {request_time, _},
         {response_length, 33},
         {status, 200}
-    ] = prepare_meta(200, #{<<"content-length">> => <<"33">>}, Req, State).
+    ] = prepare_meta(200, #{<<"content-length">> => <<"33">>}, State).
 
 -endif.
