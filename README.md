@@ -1,4 +1,4 @@
-# access-lib
+# Cowboy access log
 ## Описание
 Данное приложение служит в качестве [stream handler'a](https://ninenines.eu/docs/en/cowboy/2.0/guide/streams/), логгирующего запросы, обрабатываемые сервером.  
 **Механизм stream handler'ов был добавлен в cowboy 2.0 и не поддерживается более старыми версиями**
