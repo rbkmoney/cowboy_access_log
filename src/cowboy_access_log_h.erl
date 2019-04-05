@@ -71,12 +71,10 @@ log_access_safe(Code, Headers, #{req := Req} = State) ->
     end.
 
 log_access(Code, Headers, State) ->
-    %% Call lager:log/5 here directly in order to pass request metadata (fused into
-    %% lager metadata) without storing it in a process dict via lager:md/1.
     logger:log(info, "", [], prepare_meta(Code, Headers, State)).
 
 prepare_meta(Code, Headers, #{req := Req, meta:= Meta} = _State) ->
-    MD1 = set_log_meta(remote_addr, get_remote_addr(Req), #{}),
+    MD1 = set_log_meta(remote_addr, get_remote_addr(Req), #{domain => [cowboy_access_log]}),
     MD2 = set_log_meta(peer_addr, get_peer_addr(Req), MD1),
     MD3 = set_log_meta(request_method, cowboy_req:method(Req), MD2),
     MD4 = set_log_meta(request_path, cowboy_req:path(Req), MD3),
