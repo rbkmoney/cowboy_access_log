@@ -5,14 +5,10 @@
   {git,"https://github.com/rbkmoney/genlib.git",
        {ref,"7fc1ca1a57dbe2b8b837951095e314c32afd6c9a"}},
   0},
- {<<"goldrush">>,{pkg,<<"goldrush">>,<<"0.1.9">>},1},
- {<<"lager">>,{pkg,<<"lager">>,<<"3.2.4">>},0},
  {<<"ranch">>,{pkg,<<"ranch">>,<<"1.6.2">>},1}]}.
 [
 {pkg_hash,[
  {<<"cowboy">>, <<"4EF3AE066EE10FE01EA3272EDC8F024347A0D3EB95F6FBB9AED556DACBFC1337">>},
  {<<"cowlib">>, <<"8AA629F81A0FC189F261DC98A42243FA842625FEEA3C7EC56C48F4CCDB55490F">>},
- {<<"goldrush">>, <<"F06E5D5F1277DA5C413E84D5A2924174182FB108DABB39D5EC548B27424CD106">>},
- {<<"lager">>, <<"A6DEB74DAE7927F46BD13255268308EF03EB206EC784A94EAF7C1C0F3B811615">>},
  {<<"ranch">>, <<"6DB93C78F411EE033DBB18BA8234C5574883ACB9A75AF0FB90A9B82EA46AFA00">>}]}
 ].

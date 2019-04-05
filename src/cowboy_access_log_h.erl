@@ -1,8 +1,6 @@
 -module(cowboy_access_log_h).
 -behaviour(cowboy_stream).
 
--compile([{parse_transform, lager_transform}]).
-
 -dialyzer(no_undefined_callbacks).
 
 %% callback exports
@@ -16,8 +14,7 @@
 -type state() :: #{
     next := any(),
     req  := cowboy_req:req(),
-    sink := atom(),
-    meta := #{started_at => genlib_time:ticks()}
+    meta := #{started_at => genlib_time:ts()}
 }.
 
 %% callbacks
@@ -25,7 +22,7 @@
 -spec init(cowboy_stream:streamid(), cowboy_req:req(), cowboy:opts())
     -> {cowboy_stream:commands(), state()}.
 init(StreamID, Req, Opts) ->
-    State = make_state(Req, Opts),
+    State = make_state(Req),
     {Commands0, Next} = cowboy_stream:init(StreamID, Req, Opts),
     {Commands0, State#{next => Next}}.
 
@@ -52,8 +49,8 @@ terminate(StreamID, Reason, #{next := Next}) ->
 -spec early_error(cowboy_stream:streamid(), cowboy_stream:reason(),
     cowboy_stream:partial_req(), Resp, cowboy:opts()) -> Resp
     when Resp::cowboy_stream:resp_command().
-early_error(StreamID, Reason, PartialReq, {_, Code, Headers, _} = Resp, Opts) ->
-    State = make_state(PartialReq, Opts),
+early_error(StreamID, Reason, PartialReq, {_, Code, Headers, _} = Resp, _Opts) ->
+    State = make_state(PartialReq),
     _ = log_access_safe(Code, Headers, State),
     cowboy_stream:early_error(StreamID, Reason, PartialReq, Resp, State).
 
@@ -66,20 +63,20 @@ log_access_safe(Code, Headers, #{req := Req} = State) ->
     catch
         Class:Reason:Stacktrace ->
             Stack = genlib_format:format_stacktrace(Stacktrace, [newlines]),
-            _ = lager:error(
+            _ = logger:error(
                   "Response hook failed for: [~p, ~p, ~p]~nwith: ~p:~p~nstacktrace: ~ts",
                   [Code, Headers, Req, Class, Reason, Stack]
                  ),
             Req
     end.
 
-log_access(Code, Headers, #{sink := SinkName} = State) ->
+log_access(Code, Headers, State) ->
     %% Call lager:log/5 here directly in order to pass request metadata (fused into
     %% lager metadata) without storing it in a process dict via lager:md/1.
-    lager:log(SinkName, info, prepare_meta(Code, Headers, State), "", []).
+    logger:log(info, "", [], prepare_meta(Code, Headers, State)).
 
 prepare_meta(Code, Headers, #{req := Req, meta:= Meta} = _State) ->
-    MD1 = set_log_meta(remote_addr, get_remote_addr(Req), lager:md()),
+    MD1 = set_log_meta(remote_addr, get_remote_addr(Req), #{}),
     MD2 = set_log_meta(peer_addr, get_peer_addr(Req), MD1),
     MD3 = set_log_meta(request_method, cowboy_req:method(Req), MD2),
     MD4 = set_log_meta(request_path, cowboy_req:path(Req), MD3),
@@ -92,7 +89,7 @@ prepare_meta(Code, Headers, #{req := Req, meta:= Meta} = _State) ->
 set_log_meta(_, undefined, MD) ->
     MD;
 set_log_meta(Name, Value, MD) ->
-    orddict:store(Name, Value, MD).
+    MD#{Name => Value}.
 
 get_peer_addr(Req) ->
     case cowboy_req:peer(Req) of
@@ -145,9 +142,8 @@ get_response_len(Headers) ->
             genlib:to_int(Len)
     end.
 
-make_state(Req, Opts) ->
-    SinkName = maps:get(sink, Opts),
-    set_meta(#{req => Req, sink => SinkName}).
+make_state(Req) ->
+    set_meta(#{req => Req}).
 
 set_meta(State) ->
     State#{meta => #{started_at => genlib_time:ticks()}}.
@@ -156,9 +152,6 @@ set_meta(State) ->
 -include_lib("eunit/include/eunit.hrl").
 
 -spec test() -> _.
-
-make_state(Req) ->
-    make_state(Req, #{sink => dummy}).
 
 -spec filter_meta_test() -> _.
 filter_meta_test() ->
@@ -176,13 +169,13 @@ filter_meta_test() ->
         body_length => 0
     },
     State = make_state(Req),
-    [
-        {request_length, 0},
-        {request_method, <<"GET">>},
-        {request_path, <<>>},
-        {request_time, _},
-        {response_length, 33},
-        {status, 200}
-    ] = prepare_meta(200, #{<<"content-length">> => <<"33">>}, State).
+    #{
+        request_length := 0,
+        request_method := <<"GET">>,
+        request_path := <<>>,
+        request_time := _,
+        response_length := 33,
+        status := 200
+    } = prepare_meta(200, #{<<"content-length">> => <<"33">>}, State).
 
 -endif.
