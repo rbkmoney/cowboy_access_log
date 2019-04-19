@@ -81,22 +81,20 @@ get_process_meta() ->
             Meta
     end.
 
-prepare_meta(Code, Headers, #{req := Req, meta:= Meta} = _State) ->
-    MD0 = set_log_meta(domain, [cowboy_access_log], get_process_meta()),
-    MD1 = set_log_meta(remote_addr, get_remote_addr(Req), MD0),
-    MD2 = set_log_meta(peer_addr, get_peer_addr(Req), MD1),
-    MD3 = set_log_meta(request_method, cowboy_req:method(Req), MD2),
-    MD4 = set_log_meta(request_path, cowboy_req:path(Req), MD3),
-    MD5 = set_log_meta(request_length, cowboy_req:body_length(Req), MD4),
-    MD6 = set_log_meta(response_length, get_response_len(Headers), MD5),
-    MD7 = set_log_meta(request_time, get_request_duration(Meta), MD6),
-    MD8 = set_log_meta('http_x-request-id', cowboy_req:header(<<"x-request-id">>, Req, undefined), MD7),
-    set_log_meta(status, Code, MD8).
-
-set_log_meta(_, undefined, MD) ->
-    MD;
-set_log_meta(Name, Value, MD) ->
-    MD#{Name => Value}.
+prepare_meta(Code, Headers, #{req := Req, meta:= Meta0} = _State) ->
+    AccessMeta = genlib_map:compact(#{
+        domain              => [cowboy_access_log],
+        status              => Code,
+        remote_addr         => get_remote_addr(Req),
+        peer_addr           => get_peer_addr(Req),
+        request_method      => cowboy_req:method(Req),
+        request_path        => cowboy_req:path(Req),
+        request_length      => cowboy_req:body_length(Req),
+        response_length     => get_response_len(Headers),
+        request_time        => get_request_duration(Meta0),
+        'http_x-request-id' => cowboy_req:header(<<"x-request-id">>, Req, undefined)
+    }),
+    maps:merge(get_process_meta(), AccessMeta).
 
 get_peer_addr(Req) ->
     case cowboy_req:peer(Req) of
