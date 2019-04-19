@@ -73,8 +73,17 @@ log_access_safe(Code, Headers, #{req := Req} = State) ->
 log_access(Code, Headers, State) ->
     logger:log(info, "", [], prepare_meta(Code, Headers, State)).
 
+get_process_meta() ->
+    case logger:get_process_metadata() of
+        undefined ->
+            #{};
+        Meta ->
+            Meta
+    end.
+
 prepare_meta(Code, Headers, #{req := Req, meta:= Meta} = _State) ->
-    MD1 = set_log_meta(remote_addr, get_remote_addr(Req), #{domain => [cowboy_access_log]}),
+    MD0 = set_log_meta(domain, [cowboy_access_log], get_process_meta()),
+    MD1 = set_log_meta(remote_addr, get_remote_addr(Req), MD0),
     MD2 = set_log_meta(peer_addr, get_peer_addr(Req), MD1),
     MD3 = set_log_meta(request_method, cowboy_req:method(Req), MD2),
     MD4 = set_log_meta(request_path, cowboy_req:path(Req), MD3),
