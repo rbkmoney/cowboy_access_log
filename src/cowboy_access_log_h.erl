@@ -81,6 +81,9 @@ get_process_meta() ->
             Meta
     end.
 
+% domain field specifies the functional area that send log event
+% as we want to save logs from this app in a separate file,
+% we can easily filter logs by their domain using OTP filter functions.
 prepare_meta(Code, Headers, #{req := Req, meta:= Meta0} = _State) ->
     AccessMeta = genlib_map:compact(#{
         domain              => [cowboy_access_log],
