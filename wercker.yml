@@ -12,8 +12,5 @@ build:
         name: run xref
         code: make xref
       - script:
-        name: run lint
-        code: make lint
-      - script:
         name: run test suite
         code: make test
