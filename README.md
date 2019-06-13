@@ -1,4 +1,5 @@
 # Cowboy access log
+[![wercker status](https://app.wercker.com/status/b0658aa3139048c2c5c8fb512c34bf01/s/master "wercker status")](https://app.wercker.com/project/byKey/b0658aa3139048c2c5c8fb512c34bf01)
 ## Description
 This app implements apache-styled access logging for cowboy >= 2.0.  
 It works as a `stream handler` and logs every request received by server via Logger.  
