@@ -64,7 +64,7 @@ log_access_safe(Code, Headers, #{req := Req} = State) ->
         Class:Reason:Stacktrace ->
             Stack = genlib_format:format_stacktrace(Stacktrace, [newlines]),
             _ = logger:error(
-                  "Response hook failed for: [~p, ~p, ~p]~nwith: ~p:~p~nstacktrace: ~ts",
+                  "Log access failed for: [~p, ~p, ~p]~nwith: ~p:~p~nstacktrace: ~ts",
                   [Code, Headers, Req, Class, Reason, Stack]
                  ),
             Req
