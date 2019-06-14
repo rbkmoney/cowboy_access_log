@@ -100,12 +100,8 @@ prepare_meta(Code, Headers, #{req := Req, meta:= Meta0} = _State) ->
     maps:merge(get_process_meta(), AccessMeta).
 
 get_peer_addr(Req) ->
-    case cowboy_req:peer(Req) of
-        undefined ->
-            undefined;
-        {IP, _Port} ->
-            genlib:to_binary(inet:ntoa(IP))
-    end.
+    {IP, _Port} = cowboy_req:peer(Req),
+    genlib:to_binary(inet:ntoa(IP)).
 
 get_remote_addr(Req) ->
     case determine_remote_addr(Req) of
@@ -130,9 +126,7 @@ determine_remote_addr_from_header(Value, _Peer) when is_binary(Value) ->
             inet:parse_strict_address(ClientIP);
         _ ->
             {error, malformed}
-    end;
-determine_remote_addr_from_header(undefined, undefined) ->
-    {error, undefined}.
+    end.
 
 get_request_duration(Meta) ->
     case maps:get(started_at, Meta, undefined) of
@@ -165,7 +159,7 @@ set_meta(State) ->
 filter_meta_test() ->
     Req = #{
         pid => self(),
-        peer => undefined,
+        peer => {{42, 42, 42, 42}, 4242},
         method => <<"GET">>,
         path => <<>>,
         qs => <<>>,
@@ -183,6 +177,7 @@ filter_meta_test() ->
         request_path := <<>>,
         request_time := _,
         response_length := 33,
+        peer_addr := <<"42.42.42.42">>,
         status := 200
     } = prepare_meta(200, #{<<"content-length">> => <<"33">>}, State).
 
