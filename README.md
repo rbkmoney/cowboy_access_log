@@ -21,7 +21,7 @@ Check examples for better understanding.
 ### Add handler
 ```
 cowboy:start_clear(http, [{port, 8080}], #{
-    stream_handlers => [cowboy_metrics_h, cowboy_stream_h],
+    stream_handlers => [cowboy_access_log, cowboy_stream_h],
     env => #{dispatch => Dispatch}
 }).
 ```
