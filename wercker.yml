@@ -9,6 +9,9 @@ build:
         name: compile
         code: make compile
       - script:
+        name: dialyze
+        code: make dialyze
+      - script:
         name: run xref
         code: make xref
       - script:
