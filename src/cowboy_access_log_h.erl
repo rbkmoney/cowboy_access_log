@@ -3,12 +3,12 @@
 
 -dialyzer(no_undefined_callbacks).
 
--type extention_fun() :: fun((cowboy_req:req()) -> #{atom() => term()}).
--export_type([extention_fun/0]).
+-type extra_info_fun() :: fun((cowboy_req:req()) -> #{atom() => term()}).
+-export_type([extra_info_fun/0]).
 
 %% API exports
 
--export([set_extention_fun/2]).
+-export([set_extra_info_fun/2]).
 
 %% callback exports
 
@@ -22,15 +22,15 @@
     next := any(),
     req  := cowboy_req:req(),
     meta := #{started_at => genlib_time:ts()},
-    ext_fun := extention_fun()
+    ext_fun := extra_info_fun()
 }.
 
 %% API
 
--spec set_extention_fun(extention_fun(), cowboy:opts())
+-spec set_extra_info_fun(extra_info_fun(), cowboy:opts())
    -> cowboy:opts().
-set_extention_fun(Fun, Opts) when is_function(Fun, 1) ->
-    Opts#{access_log_ext_fun => Fun}.
+set_extra_info_fun(Fun, Opts) when is_function(Fun, 1) ->
+    Opts#{extra_info_fun => Fun}.
 
 %% callbacks
 
@@ -174,7 +174,7 @@ set_meta(State) ->
     State#{meta => #{started_at => genlib_time:ticks()}}.
 
 make_ext_fun(Opts) ->
-    maps:get(access_log_ext_fun, Opts, fun(Req) -> Req end).
+    maps:get(extra_info_fun, Opts, fun(_Req) -> #{} end).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
