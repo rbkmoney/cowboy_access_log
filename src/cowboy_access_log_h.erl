@@ -11,6 +11,9 @@
 -export([terminate/3]).
 -export([early_error/5]).
 
+%% NOTE: This value must match to SWAGGER_OPERATION_ID from swagger_codegen
+-define(SWAGGER_OPERATION_ID, swagger_operation_id).
+
 -type state() :: #{
     next := any(),
     req  := cowboy_req:req(),
@@ -95,6 +98,7 @@ prepare_meta(Code, Headers, #{req := Req, meta:= Meta0} = _State) ->
         request_length      => cowboy_req:body_length(Req),
         response_length     => get_response_len(Headers),
         request_time        => get_request_duration(Meta0),
+        operation_id        => get_operation_id(Req),
         'http_x-request-id' => cowboy_req:header(<<"x-request-id">>, Req, undefined)
     }),
     maps:merge(get_process_meta(), AccessMeta).
@@ -155,6 +159,13 @@ make_state(Req) ->
 
 set_meta(State) ->
     State#{meta => #{started_at => genlib_time:ticks()}}.
+
+get_operation_id(Req) when is_map(Req) ->
+    %% Req::cowboy_req:req() is map in cowboy 2+
+    maps:get(?SWAGGER_OPERATION_ID, Req, undefined);
+get_operation_id(Req) ->
+    {OperationID, _Req} = cowboy_req:meta(?SWAGGER_OPERATION_ID, Req, undefined),
+    OperationID.
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
