@@ -11,9 +11,6 @@
 -export([terminate/3]).
 -export([early_error/5]).
 
-%% NOTE: This value must match to SWAGGER_OPERATION_ID from swagger_codegen
--define(SWAGGER_OPERATION_ID, swagger_operation_id).
-
 -type state() :: #{
     next := any(),
     req  := cowboy_req:req(),
@@ -101,7 +98,7 @@ prepare_meta(Code, Headers, #{req := Req, meta:= Meta0} = _State) ->
         'http_x-request-id' => cowboy_req:header(<<"x-request-id">>, Req, undefined)
     }),
     AccessMeta1 = maps:merge(get_process_meta(), AccessMeta),
-    maybe_add_operation_id(AccessMeta1, Req).
+    maybe_add_operation_id(swag_server_utils, AccessMeta1, Req).
 
 get_peer_addr(Req) ->
     case cowboy_req:peer(Req) of
@@ -160,13 +157,15 @@ make_state(Req) ->
 set_meta(State) ->
     State#{meta => #{started_at => genlib_time:ticks()}}.
 
-maybe_add_operation_id(AccessMeta, Req) ->
-    %% cowboy_req:req() is map in cowboy 2+
-    case maps:get(?SWAGGER_OPERATION_ID, Req, undefined) of
+maybe_add_operation_id(UtilsMod, AccessMeta, Req) ->
+    try UtilsMod:get_operation_id(Req) of
         undefined ->
             AccessMeta;
         OperationID ->
             AccessMeta#{operation_id => OperationID}
+    catch
+        error:undef ->
+            AccessMeta
     end.
 
 -ifdef(TEST).
