@@ -3,6 +3,13 @@
 
 -dialyzer(no_undefined_callbacks).
 
+-type extention_fun() :: fun((cowboy_req:req()) -> #{atom() => term()}).
+-export_type([extention_fun/0]).
+
+%% API exports
+
+-export([set_extention_fun/2]).
+
 %% callback exports
 
 -export([init/3]).
@@ -14,15 +21,23 @@
 -type state() :: #{
     next := any(),
     req  := cowboy_req:req(),
-    meta := #{started_at => genlib_time:ts()}
+    meta := #{started_at => genlib_time:ts()},
+    ext_fun := extention_fun()
 }.
+
+%% API
+
+-spec set_extention_fun(extention_fun(), cowboy:opts())
+   -> cowboy:opts().
+set_extention_fun(Fun, Opts) when is_function(Fun, 1) ->
+    Opts#{access_log_ext_fun => Fun}.
 
 %% callbacks
 
 -spec init(cowboy_stream:streamid(), cowboy_req:req(), cowboy:opts())
     -> {cowboy_stream:commands(), state()}.
 init(StreamID, Req, Opts) ->
-    State = make_state(Req),
+    State = make_state(Req, Opts),
     {Commands0, Next} = cowboy_stream:init(StreamID, Req, Opts),
     {Commands0, State#{next => Next}}.
 
@@ -49,8 +64,8 @@ terminate(StreamID, Reason, #{next := Next}) ->
 -spec early_error(cowboy_stream:streamid(), cowboy_stream:reason(),
     cowboy_stream:partial_req(), Resp, cowboy:opts()) -> Resp
     when Resp::cowboy_stream:resp_command().
-early_error(StreamID, Reason, PartialReq, {_, Code, Headers, _} = Resp, _Opts) ->
-    State = make_state(PartialReq),
+early_error(StreamID, Reason, PartialReq, {_, Code, Headers, _} = Resp, Opts) ->
+    State = make_state(PartialReq, Opts),
     _ = log_access_safe(Code, Headers, State),
     cowboy_stream:early_error(StreamID, Reason, PartialReq, Resp, State).
 
@@ -84,7 +99,7 @@ get_process_meta() ->
 % domain field specifies the functional area that send log event
 % as we want to save logs from this app in a separate file,
 % we can easily filter logs by their domain using OTP filter functions.
-prepare_meta(Code, Headers, #{req := Req, meta:= Meta0} = _State) ->
+prepare_meta(Code, Headers, #{req := Req, meta:= Meta0, ext_fun := F}) ->
     AccessMeta = genlib_map:compact(#{
         domain              => [cowboy_access_log],
         status              => Code,
@@ -98,7 +113,7 @@ prepare_meta(Code, Headers, #{req := Req, meta:= Meta0} = _State) ->
         'http_x-request-id' => cowboy_req:header(<<"x-request-id">>, Req, undefined)
     }),
     AccessMeta1 = maps:merge(get_process_meta(), AccessMeta),
-    maybe_add_operation_id(swag_server_utils, AccessMeta1, Req).
+    maps:merge(F(Req), AccessMeta1).
 
 get_peer_addr(Req) ->
     case cowboy_req:peer(Req) of
@@ -151,22 +166,15 @@ get_response_len(Headers) ->
             genlib:to_int(Len)
     end.
 
-make_state(Req) ->
-    set_meta(#{req => Req}).
+make_state(Req, Opts) ->
+    ExtFun = make_ext_fun(Opts),
+    set_meta(#{req => Req, ext_fun => ExtFun}).
 
 set_meta(State) ->
     State#{meta => #{started_at => genlib_time:ticks()}}.
 
-maybe_add_operation_id(UtilsMod, AccessMeta, Req) ->
-    try UtilsMod:get_operation_id(Req) of
-        undefined ->
-            AccessMeta;
-        OperationID ->
-            AccessMeta#{operation_id => OperationID}
-    catch
-        error:undef ->
-            AccessMeta
-    end.
+make_ext_fun(Opts) ->
+    maps:get(access_log_ext_fun, Opts, fun(Req) -> Req end).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -188,7 +196,7 @@ filter_meta_test() ->
         has_body => false,
         body_length => 0
     },
-    State = make_state(Req),
+    State = make_state(Req, #{}),
     #{
         request_length := 0,
         request_method := <<"GET">>,
