@@ -160,12 +160,9 @@ make_state(Req) ->
 set_meta(State) ->
     State#{meta => #{started_at => genlib_time:ticks()}}.
 
-get_operation_id(Req) when is_map(Req) ->
-    %% Req::cowboy_req:req() is map in cowboy 2+
-    maps:get(?SWAGGER_OPERATION_ID, Req, undefined);
 get_operation_id(Req) ->
-    {OperationID, _Req} = cowboy_req:meta(?SWAGGER_OPERATION_ID, Req, undefined),
-    OperationID.
+    %% cowboy_req:req() is map in cowboy 2+
+    maps:get(?SWAGGER_OPERATION_ID, Req, undefined).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
