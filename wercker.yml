@@ -1,0 +1,19 @@
+box: erlang:21
+dev:
+    steps:
+      - internal/shell:
+        code: make compile
+build:
+    steps:
+      - script:
+        name: compile
+        code: make compile
+      - script:
+        name: dialyze
+        code: make dialyze
+      - script:
+        name: run xref
+        code: make xref
+      - script:
+        name: run test suite
+        code: make test
