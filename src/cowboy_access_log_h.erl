@@ -49,7 +49,10 @@ data(StreamID, IsFin, Data, #{next := Next0} = State) ->
 
 -spec info(cowboy_stream:streamid(), any(), State)
     -> {cowboy_stream:commands(), State} when State::state().
-info(StreamID, {response, Code, Headers, _} = Info, #{next := Next0} = State) ->
+info(StreamID, {IsResponse, Code, Headers, _} = Info, #{next := Next0} = State) when
+    IsResponse == response;
+    IsResponse == error_response
+->
     _ = log_access_safe(Code, Headers, State),
     {Commands0, Next} = cowboy_stream:info(StreamID, Info, Next0),
     {Commands0, State#{next => Next}};
