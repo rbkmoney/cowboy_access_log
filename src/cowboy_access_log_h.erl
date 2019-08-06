@@ -110,13 +110,19 @@ prepare_meta(Code, Headers, #{req := Req, meta:= Meta0, ext_fun := F}) ->
         peer_addr           => get_peer_addr(Req),
         request_method      => cowboy_req:method(Req),
         request_path        => cowboy_req:path(Req),
-        request_length      => cowboy_req:body_length(Req),
+        request_length      => get_request_body_length(Req),
         response_length     => get_response_len(Headers),
         request_time        => get_request_duration(Meta0),
         'http_x-request-id' => cowboy_req:header(<<"x-request-id">>, Req, undefined)
     }),
     AccessMeta1 = maps:merge(get_process_meta(), AccessMeta),
     maps:merge(F(Req), AccessMeta1).
+
+get_request_body_length(Req) ->
+    case cowboy_req:has_body(Req) of
+        false -> undefined;
+        true -> cowboy_req:body_length(Req)
+    end.
 
 get_peer_addr(Req) ->
     {IP, _Port} = cowboy_req:peer(Req),
@@ -190,12 +196,10 @@ filter_meta_test() ->
         headers => #{},
         host => <<>>,
         port => undefined,
-        has_body => false,
-        body_length => 0
+        has_body => false
     },
     State = make_state(Req, #{}),
     #{
-        request_length := 0,
         request_method := <<"GET">>,
         request_path := <<>>,
         request_time := _,
