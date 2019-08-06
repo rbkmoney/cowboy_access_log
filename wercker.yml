@@ -10,7 +10,7 @@ build:
         code: make compile
       - script:
         name: dialyze
-        code: make dialyze
+        code: env REBAR_CACHE_DIR="${WERCKER_CACHE_DIR}" rebar3 dialyzer 
       - script:
         name: run xref
         code: make xref
