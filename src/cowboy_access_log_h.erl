@@ -119,9 +119,12 @@ prepare_meta(Code, Headers, #{req := Req, meta:= Meta0, ext_fun := F}) ->
     maps:merge(F(Req), AccessMeta1).
 
 get_request_body_length(Req) ->
-    case cowboy_req:has_body(Req) of
+    try cowboy_req:has_body(Req) of
         false -> undefined;
         true -> cowboy_req:body_length(Req)
+    catch
+        error:function_clause ->
+            undefined
     end.
 
 get_peer_addr(Req) ->
@@ -207,5 +210,22 @@ filter_meta_test() ->
         peer_addr := <<"42.42.42.42">>,
         status := 200
     } = prepare_meta(200, #{<<"content-length">> => <<"33">>}, State).
+
+-spec get_request_body_length_test() -> _.
+get_request_body_length_test() ->
+    Req = #{
+        pid => self(),
+        peer => {{42, 42, 42, 42}, 4242},
+        method => <<"GET">>,
+        path => <<>>,
+        qs => <<>>,
+        version => 'HTTP/1.1',
+        headers => #{},
+        host => <<>>,
+        port => undefined
+    },
+    ?assertEqual(undefined, get_request_body_length(Req)),
+    ?assertEqual(undefined, get_request_body_length(Req#{has_body => false})),
+    ?assertEqual(4, get_request_body_length(Req#{has_body => true, body_length => 4, body => <<"TEST">>})).
 
 -endif.
