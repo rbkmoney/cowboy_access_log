@@ -49,11 +49,11 @@ data(StreamID, IsFin, Data, #{next := Next0} = State) ->
 
 -spec info(cowboy_stream:streamid(), any(), State)
     -> {cowboy_stream:commands(), State} when State::state().
-info(StreamID, {IsResponse, Code, Headers, _} = Info, #{next := Next0} = State) when
+info(StreamID, {IsResponse, Code, Headers, _} = Info, #{req := Req, next := Next0} = State) when
     IsResponse == response;
     IsResponse == error_response
 ->
-    _ = log_access_safe(Code, Headers, State),
+    _ = log_access_safe(Code, Headers, State, get_request_body_length(Req)),
     {Commands0, Next} = cowboy_stream:info(StreamID, Info, Next0),
     {Commands0, State#{next => Next}};
 info(StreamID, Info, #{next := Next0} = State) ->
@@ -69,14 +69,14 @@ terminate(StreamID, Reason, #{next := Next}) ->
     when Resp::cowboy_stream:resp_command().
 early_error(StreamID, Reason, PartialReq, {_, Code, Headers, _} = Resp, Opts) ->
     State = make_state(PartialReq, Opts),
-    _ = log_access_safe(Code, Headers, State),
+    _ = log_access_safe(Code, Headers, State, undefined),
     cowboy_stream:early_error(StreamID, Reason, PartialReq, Resp, State).
 
 %% private functions
 
-log_access_safe(Code, Headers, #{req := Req} = State) ->
+log_access_safe(Code, Headers, #{req := Req} = State, ReqBodyLength) ->
     try
-        _ = log_access(Code, Headers, State),
+        logger:log(info, "", [], prepare_meta(Code, Headers, State, ReqBodyLength)),
         Req
     catch
         Class:Reason:Stacktrace ->
@@ -87,9 +87,6 @@ log_access_safe(Code, Headers, #{req := Req} = State) ->
                  ),
             Req
     end.
-
-log_access(Code, Headers, State) ->
-    logger:log(info, "", [], prepare_meta(Code, Headers, State)).
 
 get_process_meta() ->
     case logger:get_process_metadata() of
@@ -102,7 +99,7 @@ get_process_meta() ->
 % domain field specifies the functional area that send log event
 % as we want to save logs from this app in a separate file,
 % we can easily filter logs by their domain using OTP filter functions.
-prepare_meta(Code, Headers, #{req := Req, meta:= Meta0, ext_fun := F}) ->
+prepare_meta(Code, Headers, #{req := Req, meta:= Meta0, ext_fun := F}, ReqBodyLength) ->
     AccessMeta = genlib_map:compact(#{
         domain              => [cowboy_access_log],
         status              => Code,
@@ -110,7 +107,7 @@ prepare_meta(Code, Headers, #{req := Req, meta:= Meta0, ext_fun := F}) ->
         peer_addr           => get_peer_addr(Req),
         request_method      => cowboy_req:method(Req),
         request_path        => cowboy_req:path(Req),
-        request_length      => get_request_body_length(Req),
+        request_length      => ReqBodyLength,
         response_length     => get_response_len(Headers),
         request_time        => get_request_duration(Meta0),
         'http_x-request-id' => cowboy_req:header(<<"x-request-id">>, Req, undefined)
@@ -118,15 +115,10 @@ prepare_meta(Code, Headers, #{req := Req, meta:= Meta0, ext_fun := F}) ->
     AccessMeta1 = maps:merge(get_process_meta(), AccessMeta),
     maps:merge(F(Req), AccessMeta1).
 
-%% NOTE: There is a bug with cowboy_req:has_body/1 in cowboy prior 2.7.0
-%% see https://github.com/ninenines/cowboy/issues/1417
 get_request_body_length(Req) ->
-    try cowboy_req:has_body(Req) of
+    case cowboy_req:has_body(Req) of
         false -> undefined;
         true -> cowboy_req:body_length(Req)
-    catch
-        error:function_clause ->
-            undefined
     end.
 
 get_peer_addr(Req) ->
@@ -201,7 +193,7 @@ filter_meta_test() ->
         headers => #{},
         host => <<>>,
         port => undefined,
-        has_body => false
+        has_body => true
     },
     State = make_state(Req, #{}),
     #{
@@ -209,12 +201,13 @@ filter_meta_test() ->
         request_path := <<>>,
         request_time := _,
         response_length := 33,
+        request_length := 100,
         peer_addr := <<"42.42.42.42">>,
         status := 200
-    } = prepare_meta(200, #{<<"content-length">> => <<"33">>}, State).
+    } = prepare_meta(200, #{<<"content-length">> => <<"33">>}, State, 100).
 
--spec get_request_body_length_test() -> _.
-get_request_body_length_test() ->
+-spec filter_meta_for_error_test() -> _.
+filter_meta_for_error_test() ->
     Req = #{
         pid => self(),
         peer => {{42, 42, 42, 42}, 4242},
@@ -224,10 +217,17 @@ get_request_body_length_test() ->
         version => 'HTTP/1.1',
         headers => #{},
         host => <<>>,
-        port => undefined
+        port => undefined,
+        has_body => true
     },
-    ?assertEqual(undefined, get_request_body_length(Req)),
-    ?assertEqual(undefined, get_request_body_length(Req#{has_body => false})),
-    ?assertEqual(4, get_request_body_length(Req#{has_body => true, body_length => 4, body => <<"TEST">>})).
+    State = make_state(Req, #{}),
+    #{
+        peer_addr := <<"42.42.42.42">>,
+        remote_addr := <<"42.42.42.42">>,
+        request_method := <<"GET">>,
+        request_path := <<>>,
+        request_time := _,
+        status := 400
+    } = prepare_meta(400, #{}, State, undefined).
 
 -endif.
