@@ -118,6 +118,8 @@ prepare_meta(Code, Headers, #{req := Req, meta:= Meta0, ext_fun := F}) ->
     AccessMeta1 = maps:merge(get_process_meta(), AccessMeta),
     maps:merge(F(Req), AccessMeta1).
 
+%% NOTE: There is a bug with cowboy_req:has_body/1 in cowboy prior 2.7.0
+%% see https://github.com/ninenines/cowboy/issues/1417
 get_request_body_length(Req) ->
     try cowboy_req:has_body(Req) of
         false -> undefined;
