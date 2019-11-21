@@ -67,6 +67,10 @@ terminate(StreamID, Reason, #{next := Next}) ->
 -spec early_error(cowboy_stream:streamid(), cowboy_stream:reason(),
     cowboy_stream:partial_req(), Resp, cowboy:opts()) -> Resp
     when Resp::cowboy_stream:resp_command().
+
+%% NOTE: in early_error cowboy uses PartialReq, a cowboy_req:req() - like structure
+%% for more info see https://ninenines.eu/docs/en/cowboy/2.7/manual/cowboy_stream/#_callbacks
+
 early_error(StreamID, Reason, PartialReq, {_, Code, Headers, _} = Resp, Opts) ->
     State = make_state(PartialReq, Opts),
     _ = log_access_safe(Code, Headers, State, undefined),
