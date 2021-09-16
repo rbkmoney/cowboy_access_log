@@ -7,12 +7,12 @@ on:
     branches: [ master ]
 
 env:
-  ERLANG_VERSION: 23.2
+  ERLANG_VERSION: 24.0
 jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: erlang:${{ env.ERLANG_VERSION }}
+      image: erlang:24.0
     steps:
     - name: Checkout
       uses: actions/checkout@v1
