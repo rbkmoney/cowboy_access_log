@@ -1,0 +1,31 @@
+name: Erlang CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+env:
+  ERLANG_VERSION: 23.2
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: erlang:${{ env.ERLANG_VERSION }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v1
+    - name: Restore rebar3 chache
+      uses: actions/cache@v1
+      with:
+        path: ~/.cache/rebar3
+        key: rebar3-${{ env.ERLANG_VERSION }}
+    - name: Compile
+      run: make compile
+    - name: Xref
+      run: make xref
+    - name: Dialyzer
+      run: make dialyze
+    - name: Run tests
+      run: make test
